@@ -20,8 +20,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global Engine Instance
-engine = AuditEngine()
+# ================= LAZY LOAD ENGINE =================
+engine = None
+
+
+def get_engine():
+    global engine
+    if engine is None:
+        engine = AuditEngine()   # Loads only when first used
+    return engine
 
 
 class ChatRequest(BaseModel):
@@ -33,18 +40,23 @@ class ChatRequest(BaseModel):
 async def upload_plan(file: UploadFile = File(...)):
     try:
         content = await file.read()
-        count = engine.process_audit_plan(content)
+        count = get_engine().process_audit_plan(content)
+
         return {
             "status": "success",
             "message": f"Loaded {count} processes from Audit Plan."
         }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ================= UPLOAD FINDINGS =================
 @app.post("/api/upload-findings")
-async def upload_findings(files: List[UploadFile] = File(...), append: bool = Form(False)):
+async def upload_findings(
+    files: List[UploadFile] = File(...),
+    append: bool = Form(False)
+):
     try:
         files_data = []
 
@@ -52,13 +64,15 @@ async def upload_findings(files: List[UploadFile] = File(...), append: bool = Fo
             content = await file.read()
             files_data.append((file.filename, content))
 
-        count = engine.process_findings(files_data, append=append)
+        engine_obj = get_engine()
+
+        count = engine_obj.process_findings(files_data, append=append)
 
         # Required processing sequence
-        engine.calculate_scores()
-        engine.perform_deep_analysis()
+        engine_obj.calculate_scores()
+        engine_obj.perform_deep_analysis()
 
-        stats = engine.get_stats()
+        stats = engine_obj.get_stats()
 
         return {
             "status": "success",
@@ -76,7 +90,7 @@ async def upload_findings(files: List[UploadFile] = File(...), append: bool = Fo
 @app.get("/api/export")
 async def export_report():
     try:
-        excel_file = engine.export_excel()
+        excel_file = get_engine().export_excel()
 
         if not excel_file:
             raise HTTPException(status_code=400, detail="No data to export.")
@@ -84,7 +98,9 @@ async def export_report():
         return StreamingResponse(
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=Enterprise_Audit_Report.xlsx"},
+            headers={
+                "Content-Disposition": "attachment; filename=Enterprise_Audit_Report.xlsx"
+            },
         )
 
     except Exception as e:
@@ -94,7 +110,7 @@ async def export_report():
 # ================= CHAT =================
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
-    response = engine.chat_query(request.message)
+    response = get_engine().chat_query(request.message)
     return {"response": response}
 
 
@@ -111,3 +127,6 @@ app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+
