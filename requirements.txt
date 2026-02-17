@@ -1,7 +1,12 @@
 fastapi
-uvicorn
+uvicorn[standard]
 sentence-transformers
 pandas
 scikit-learn
 xlsxwriter
+python-multipart
+numpy
+openpyxl
 pyngrok
+
+
