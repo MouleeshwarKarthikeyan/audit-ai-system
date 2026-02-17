@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Audit Intelligence Dashboard</title>
+
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+<h1 class="title">Audit Intelligence Dashboard</h1>
+
+<!-- ===== TOP CARDS ===== -->
+<div class="cards">
+  <div class="card">
+    <h3>Total Findings</h3>
+    <p id="totalFindings">0</p>
+  </div>
+
+  <div class="card red">
+    <h3>Critical Issues</h3>
+    <p id="criticalIssues">0</p>
+  </div>
+
+  <div class="card">
+    <h3>Observations</h3>
+    <p id="observations">0</p>
+  </div>
+
+  <div class="card orange">
+    <h3>Risk Score</h3>
+    <p id="riskScore">--</p>
+  </div>
+
+  <div class="card green">
+    <h3>Confidence</h3>
+    <p id="confidence">--%</p>
+  </div>
+</div>
+
+
+<!-- ===== CHART ===== -->
+<div class="chart-box">
+  <canvas id="riskChart"></canvas>
+</div>
+
+
+<!-- ===== FILE UPLOAD ===== -->
+<div class="upload">
+  <h2>Upload Findings</h2>
+  <input type="file" id="fileInput" multiple>
+  <button onclick="uploadFindings()">Upload</button>
+</div>
+
+
+<!-- ===== CHATBOT ===== -->
+<div class="chatbot">
+
+  <div class="chat-header">Audit AI Chat</div>
+
+  <div id="chatMessages" class="chat-messages"></div>
+
+  <div class="chat-input">
+    <input id="chatText" placeholder="Ask audit question...">
+    <button onclick="sendChat()">Send</button>
+  </div>
+
+</div>
+
+
+<script src="/static/script.js"></script>
+</body>
+</html>
