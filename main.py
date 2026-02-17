@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,10 +9,10 @@ import os
 
 from engine_v2 import AuditEngine
 
-
+# ================= APP =================
 app = FastAPI(title="Enterprise Audit Intelligence")
 
-# Enable CORS
+# Enable CORS (for frontend calls)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,27 +20,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ================= LAZY LOAD ENGINE =================
-engine = None
+# Global ML Engine
+engine = AuditEngine()
 
 
-def get_engine():
-    global engine
-    if engine is None:
-        engine = AuditEngine()   # Loads only when first used
-    return engine
-
-
+# ================= MODELS =================
 class ChatRequest(BaseModel):
     message: str
 
 
-# ================= UPLOAD AUDIT PLAN =================
+# ================= API: STATS =================
+@app.get("/api/stats")
+async def get_stats():
+    """
+    Returns dashboard statistics for frontend.
+    """
+    try:
+        return engine.get_stats()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ================= API: UPLOAD PLAN =================
 @app.post("/api/upload-plan")
 async def upload_plan(file: UploadFile = File(...)):
     try:
         content = await file.read()
-        count = get_engine().process_audit_plan(content)
+        count = engine.process_audit_plan(content)
 
         return {
             "status": "success",
@@ -51,7 +57,7 @@ async def upload_plan(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ================= UPLOAD FINDINGS =================
+# ================= API: UPLOAD FINDINGS =================
 @app.post("/api/upload-findings")
 async def upload_findings(
     files: List[UploadFile] = File(...),
@@ -64,15 +70,13 @@ async def upload_findings(
             content = await file.read()
             files_data.append((file.filename, content))
 
-        engine_obj = get_engine()
+        count = engine.process_findings(files_data, append=append)
 
-        count = engine_obj.process_findings(files_data, append=append)
+        # Required ML processing sequence
+        engine.calculate_scores()
+        engine.perform_deep_analysis()
 
-        # Required processing sequence
-        engine_obj.calculate_scores()
-        engine_obj.perform_deep_analysis()
-
-        stats = engine_obj.get_stats()
+        stats = engine.get_stats()
 
         return {
             "status": "success",
@@ -81,16 +85,14 @@ async def upload_findings(
         }
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ================= EXPORT REPORT =================
+# ================= API: EXPORT EXCEL =================
 @app.get("/api/export")
 async def export_report():
     try:
-        excel_file = get_engine().export_excel()
+        excel_file = engine.export_excel()
 
         if not excel_file:
             raise HTTPException(status_code=400, detail="No data to export.")
@@ -98,35 +100,40 @@ async def export_report():
         return StreamingResponse(
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": "attachment; filename=Enterprise_Audit_Report.xlsx"
-            },
+            headers={"Content-Disposition": "attachment; filename=Enterprise_Audit_Report.xlsx"},
         )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ================= CHAT =================
+# ================= API: CHATBOT =================
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
-    response = get_engine().chat_query(request.message)
-    return {"response": response}
+    try:
+        response = engine.chat_query(request.message)
+        return {"response": response}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-# ================= SERVE FRONTEND =================
-static_dir = os.path.join(os.path.dirname(__file__), "static")
+# ================= FRONTEND SERVING =================
 
-if not os.path.exists(static_dir):
-    os.makedirs(static_dir)
-
-app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+# Serve CSS & JS
+app.mount("/static", StaticFiles(directory="."), name="static")
 
 
-# ================= RUN SERVER (RENDER SAFE) =================
+# Root → index.html dashboard
+@app.get("/", response_class=HTMLResponse)
+def root():
+    try:
+        with open("index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        return "<h2>index.html not found. Upload frontend files.</h2>"
+
+
+# ================= SERVER START =================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
-
-
-
